@@ -2,24 +2,16 @@ xp-midi
 -------
 - documenta tutto su file di testo (per il futuro).
 
-- scrivere include dei settaggi specifici per mcu relativi al contesto midi
-  in modo che lo stesso codice possa funzionare allo stesso modo per tutte le mcu includibili.
-
-- scrivere le routine midi in distinti file .inc uno per mcu (propedeutico alla creazione di una libreria?).
-  aggiungere una routine per il settaggio della porta dove sono presenti i pin tx/rx.
-
-- esportare una libreria xp-pic-asm-library-midi
-
 - xp-midi-echo projects:
-	xp-midi-common		contiene tutti i file .inc
-	xp-midi-library		libreria di routines di configuration, Tx/Rx e parsing
-	xp-midi-echo		echo - test delle routines di configuration e Tx/Rx della libreria
-	xp-midi-monitor		midi messages monitor - test di tutte le routines della libreria midi-library
-	xp-midi-router		routing midi message between channels - test delle routines di parsing della libreria midi-library
-	xp-midi-in-controller	
-	xp-midi-merger2
+	xp-midi-routines	a set of midi routines
+	xp-midi-library		a library version of the midi routines
+	xp-midi-monitor		monitor of midi events
 
-xp-pic-asm-midi
+	xp-midi-controller	analog and digital controls to midi-out
+
+	xp-midi-bus
+	xp-midi-merger-2
+	xp-midi-merger-4
+	xp-midi-router
 
 
-xp-pic-library

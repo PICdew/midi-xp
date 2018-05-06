@@ -14,7 +14,7 @@
 ;
 ; Author.....: Alessandro Fraschetti
 ; Company....: gos95
-; Target.....: Microchip PICmicro 16F648A Microcontroller
+; Target.....: Microchip PICmicro MidRange Microcontroller
 ; Compiler...: Microchip Assembler (MPASM)
 ; Version....: 1.0 2016/01/05
 ; Description: Simple MIDI echo
@@ -22,30 +22,20 @@
 
     PROCESSOR   16f648a
     INCLUDE     <p16f648a.inc>
-;    INCLUDE     "../xp-midi-common.X/xp-midi-usart.inc"
 
 
 ;=============================================================================
 ;  CONFIGURATION
 ;=============================================================================
     __CONFIG    _CP_OFF & _DATA_CP_OFF & _LVP_OFF & _BOREN_OFF & _MCLRE_ON & _WDT_OFF & _PWRTE_ON & _HS_OSC
-;    __CONFIG   _CP_OFF & _DATA_CP_OFF & _LVP_OFF & _BOREN_OFF & _MCLRE_OFF & _WDT_OFF & _PWRTE_ON & _INTOSC_OSC_NOCLKOUT
-
-                ; _CP_[ON/OFF]    : code protect program memory enable/disable
-                ; _CPD_[ON/OFF]   : code protect data memory enable/disable
-                ; _LVP_[ON/OFF]   : Low Voltage ICSP enable/disable
-                ; _BOREN_[ON/OFF] : Brown-Out Reset enable/disable
-                ; _WDT_[ON/OFF]   : watchdog timer enable/disable
-                ; _MCLRE_[ON/OFF] : MCLR pin function digitalIO/MCLR
-                ; _PWRTE_[ON/OFF] : power-up timer enable/disable
 
 
 ;=============================================================================
-;  LABEL EQUATES
+;  CONSTANT DEFINITIONS
 ;=============================================================================
-BYTE_RECEIVED       EQU     0x00                ; midi-in byte received flag
-OVERRUN_ERROR       EQU     0x01                ; midi-in overrun error flag
-FRAME_ERROR         EQU     0x02                ; midi-in frame error flag
+    constant    BYTE_RECEIVED = 0x00            ; midi-in byte received flag
+    constant    OVERRUN_ERROR = 0x01            ; midi-in overrun error flag
+    constant    FRAME_ERROR   = 0x02            ; midi-in frame error flag
 
 
 ;=============================================================================
@@ -69,23 +59,26 @@ RESET               CODE    0x0000              ; processor reset vector
 ;  INIT ROUTINES VECTOR
 ;=============================================================================
 INIT_ROUTINES       CODE                        ; routines vector
-;
-; Init I/O Ports. Set RB1 (RX) and RB2(TX) as Input, the others PIN as Output.
-;
+
+; ---------------------------------------------------------------------------
+; Init I/O Ports. Set RB1 (RX) and RB2(TX) as Input, the others PIN as Output
+; ---------------------------------------------------------------------------
 init_ports
         errorlevel  -302
+        ; init PORTB
+        movlw       1<<RB2
         banksel     PORTB
-        movlw       b'00000100'                 ; clear output data latches and set RB2(TX)
-        movwf       PORTB
+        movwf       PORTB                       ; clear output data latches and set RB2=TX
+
         banksel     TRISB
-        movlw       b'00000110'                 ; PORTB input/output
-        movwf       TRISB
+        movlw       1<<RB2|1<<RB1
+        movwf       TRISB                       ; configure RB1 and RB2 as inputs
         errorlevel  +302
         return
 
-;
-;  Init USART
-;
+; ---------------------------------------------------------------------------
+; Init USART
+; ---------------------------------------------------------------------------
 init_usart
         errorlevel  -302
         banksel     TXSTA
@@ -93,6 +86,7 @@ init_usart
         bcf         TXSTA, TXEN                 ; disable tx
         bcf         TXSTA, SYNC                 ; asynchronous mode
         bcf         TXSTA, BRGH                 ; high bound rate
+
 ;        movlw      d'07'                        ; 31250 bauds on 4MHz osc. (BRGH=1)
 ;        movlw      d'39'                        ; 31250 bauds on 20MHz osc. (BRGH=1)
         movlw       d'09'                       ; 31250 bauds on 20MHz osc. (BRGH=0)
@@ -117,9 +111,9 @@ init_usart
         return
 
 
-;
-;  TX routines
-;
+; ---------------------------------------------------------------------------
+; TX routines
+; ---------------------------------------------------------------------------
 send_char_and_wait
         banksel     TXREG
         movwf       TXREG                       ; load tx register with W
@@ -134,9 +128,9 @@ tx_wait
         goto        $-1
         return
 
-;
+; ---------------------------------------------------------------------------
 ;  RX routines
-;
+; ---------------------------------------------------------------------------
 wait_until_receive_char
         banksel     PIR1
         btfss       PIR1, RCIF                  ; wait for data
@@ -166,9 +160,9 @@ errFERR
         bsf         midiInStatus, FRAME_ERROR	; set frame error flag
         return
 
-;
+; ---------------------------------------------------------------------------
 ;  RX/TX handler routines
-;
+; ---------------------------------------------------------------------------
 error_handler
         banksel     midiInStatus
         clrf	    midiInStatus
