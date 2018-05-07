@@ -18,7 +18,16 @@
 ; Compiler...: Microchip Assembler (MPASM)
 ; Version....: 1.0 2016/01/05
 ; Description: MIDI protocol utility routines
-;   TODO management of system messages (common, real-time and sysex)
+; 
+;                                              ----- voice message
+;                   ---- channel message -----|
+;                  |                           ----- mode message
+;                  |
+; MIDI message ----| 
+;                  |                           ---- common message
+;                   ----- system message -----|---- real-time message
+;                                              ---- exclusive message
+;
 ;=============================================================================
 
     PROCESSOR   16f648a
@@ -51,7 +60,23 @@
     constant    XPMIDI_CHANNEL_MSG = 0          ; event family: Channel Message
     constant    XPMIDI_SYSTEM_MSG  = 1          ; event family: System Message
 
-    constant    XPMIDI_STATUS_BYTE_MASK = b'10000000'
+    constant    XPMIDI_STATUS_BYTE_MASK = b'11110000'
+    constant    XPMIDI_CHANNEL_MASK = b'00001111'
+    constant    XPMIDI_SYSTEM_MESS_MASK = b'11110000'
+
+    ; Channel Messages
+    constant    XPMIDI_NOTE_OFF = 0x80
+    constant    XPMIDI_NOTE_ON = 0x90
+    constant    XPMIDI_POLY_PRESSURE = 0xA
+    constant    XPMIDI_CONTROL_CHANGE = 0xB
+    constant    XPMIDI_PROGRAM_CHANGE = 0xC
+    constant    XPMIDI_CHANNEL_PRESSURE = 0xD
+    constant    XPMIDI_PITCH_BEND = 0xE
+
+    ; System Real-Time Messages
+    ; System Common Messages
+    ; System Exclusive Message
+
 
 ;=============================================================================
 ;  VARIABLE DEFINITIONS
@@ -192,6 +217,7 @@ xpmidi_scan
 
         banksel     RCREG
         movf        RCREG, W                    ; read received data
+        banksel     midiInByte
         movwf       midiInByte
         bsf         XPMIDI_STATUS, XPMIDI_RXF   ; set midi-in status flag
         return
@@ -209,6 +235,7 @@ wait_until_receive_char
 
         banksel     RCREG
         movf        RCREG, W                    ; read received data
+        banksel     midiInByte
         movwf       midiInByte
         bsf         XPMIDI_STATUS, XPMIDI_RXF   ; set midi-in status flag
         return
@@ -246,6 +273,7 @@ XPMIDI_MSG_CODE     CODE                        ; routines code vector
 ; Parse midi-in Event
 ; ---------------------------------------------------------------------------
 xpmidi_parse
+        banksel     midiInByte
         movf        midiInByte, W               ; test for statusbyte
         andlw       XPMIDI_STATUS_BYTE_MASK
         btfss       STATUS, Z
@@ -254,94 +282,96 @@ xpmidi_parse
         return                                  ; ... lost data byte received
         btfss       XPMIDI_EVENT, XPMIDI_BYTE1  ; test for databyte order
         goto        found_databyte1             ; is databyte1, check data
+        btfss       XPMIDI_EVENT, XPMIDI_BYTE2  ; test for databyte order
         goto        found_databyte2             ; is databyte2, check data
+        return                                  ; ... lost data byte received
 
 found_statusbyte
-	movf	    midiInByte, W		    ; test for system message
-	andlw       b'11110000'			    ; or channel message
-        sublw       b'11110000'
+        movf        midiInByte, W               ; test for system message
+        andlw       XPMIDI_STATUS_BYTE_MASK     ; or channel message
+        sublw       XPMIDI_SYSTEM_MESS_MASK
         btfsc       STATUS, Z
         goto        found_system_message
 
-        clrf        XPMIDI_EVENT		    ; reset status register
-	clrf        eventInByte1		    ; reset databyte registers
-        clrf        eventInByte2		    ;
-        movf        midiInByte, W		    ; save statusbyte
-        movwf	    eventInByte0		    ;
+        clrf        XPMIDI_EVENT                ; reset status register
+        clrf        eventInByte1                ; reset databyte registers
+        clrf        eventInByte2
+        movf        midiInByte, W               ; save statusbyte
+        movwf       eventInByte0
         bsf         XPMIDI_EVENT, XPMIDI_BYTE0  ; and update status register
 check_note_off
-        movf	    eventInByte0, W		    ; test for channel voice message
-	andlw       b'11110000'			    ; note off
-        sublw       b'10000000'
+        movf        eventInByte0, W             ; test for channel voice message
+        andlw       XPMIDI_STATUS_BYTE_MASK     ; note off
+        sublw       XPMIDI_NOTE_OFF
         btfss       STATUS, Z
         goto        check_note_on
-	movf	    XPMIDI_EVENT, W		    ; set # of expected bytes
-	addlw	    0x03
-	movwf	    XPMIDI_EVENT
+        movf        XPMIDI_EVENT, W             ; set # of expected bytes
+        addlw       0x03
+        movwf       XPMIDI_EVENT
         return
 check_note_on
-        movf	    eventInByte0, W		    ; test for channel voice message
-	andlw       b'11110000'			    ; note on
-        sublw       b'10010000'
-        btfss       STATUS, Z
+        movf        eventInByte0, W             ; test for channel voice message
+        andlw       XPMIDI_STATUS_BYTE_MASK     ; note on
+        sublw       XPMIDI_NOTE_ON
+        btfss       STATUS, Z   
         goto        check_poly_pressure
-	movf	    XPMIDI_EVENT, W		    ; set # of expected bytes
-	addlw	    0x03
-	movwf	    XPMIDI_EVENT
+        movf        XPMIDI_EVENT, W             ; set # of expected bytes
+        addlw       0x03
+        movwf       XPMIDI_EVENT
         return
 check_poly_pressure
-        movf	    eventInByte0, W		    ; test for channel voice message
-	andlw       b'11110000'			    ; polyphonic key pressure
-        sublw       b'10100000'
+        movf        eventInByte0, W             ; test for channel voice message
+        andlw       XPMIDI_STATUS_BYTE_MASK     ; polyphonic key pressure
+        sublw       XPMIDI_POLY_PRESSURE
         btfss       STATUS, Z
         goto        check_control_change
-	movf	    XPMIDI_EVENT, W		    ; set # of expected bytes
-	addlw	    0x03
-	movwf	    XPMIDI_EVENT
+        movf        XPMIDI_EVENT, W             ; set # of expected bytes
+        addlw       0x03
+        movwf       XPMIDI_EVENT
         return
 check_control_change
-        movf	    eventInByte0, W		    ; test for channel voice message
-	andlw       b'11110000'			    ; control change
-        sublw       b'10110000'
+        movf        eventInByte0, W             ; test for channel voice message
+        andlw       XPMIDI_STATUS_BYTE_MASK     ; control change
+        sublw       XPMIDI_CONTROL_CHANGE
         btfss       STATUS, Z
         goto        check_program_change
-	movf	    XPMIDI_EVENT, W		    ; set # of expected bytes
-	addlw	    0x03
-	movwf	    XPMIDI_EVENT
+        movf        XPMIDI_EVENT, W             ; set # of expected bytes
+        addlw       0x03
+        movwf       XPMIDI_EVENT
         return
 check_program_change
-        movf	    eventInByte0, W		    ; test for channel voice message
-	andlw       b'11110000'			    ; program change
-        sublw       b'11000000'
+        movf        eventInByte0, W             ; test for channel voice message
+        andlw       XPMIDI_STATUS_BYTE_MASK     ; program change
+        sublw       XPMIDI_PROGRAM_CHANGE
         btfss       STATUS, Z
         goto        check_channel_pressure
-	movf	    XPMIDI_EVENT, W		    ; set # of expected bytes
-	addlw	    0x02
-	movwf	    XPMIDI_EVENT
+        movf        XPMIDI_EVENT, W             ; set # of expected bytes
+        addlw       0x02
+        movwf       XPMIDI_EVENT
         return
 check_channel_pressure
-        movf	    eventInByte0, W		    ; test for channel voice message
-	andlw       b'11110000'			    ; channel pressure
-        sublw       b'11010000'
+        movf        eventInByte0, W             ; test for channel voice message
+        andlw       XPMIDI_STATUS_BYTE_MASK     ; channel pressure
+        sublw       XPMIDI_CHANNEL_PRESSURE
         btfss       STATUS, Z
         goto        check_pitch_bend_change
-	movf	    XPMIDI_EVENT, W		    ; set # of expected bytes
-	addlw	    0x02
-	movwf	    XPMIDI_EVENT
+        movf        XPMIDI_EVENT, W             ; set # of expected bytes
+        addlw       0x02
+        movwf       XPMIDI_EVENT
         return
 check_pitch_bend_change
-        movf	    eventInByte0, W		    ; test for channel voice message
-	andlw       b'11110000'			    ; pitch bend change
-        sublw       b'11010000'
+        movf        eventInByte0, W             ; test for channel voice message
+        andlw       XPMIDI_STATUS_BYTE_MASK     ; pitch bend change
+        sublw       XPMIDI_PITCH_BEND
         btfss       STATUS, Z
         return
-	movf	    XPMIDI_EVENT, W		    ; set # of expected bytes
-	addlw	    0x03
-	movwf	    XPMIDI_EVENT
+        movf        XPMIDI_EVENT, W             ; set # of expected bytes
+        addlw       0x03
+        movwf       XPMIDI_EVENT
         return
 
 found_system_message
-	bsf         XPMIDI_EVENT, XPMIDI_FAMILY   ; system message
+        bsf         XPMIDI_EVENT, XPMIDI_FAMILY ; system message
 
 ;	movf	    eventInByte0, W		    ; test for system real-time message
 ;	andlw       b'11111000'
@@ -354,31 +384,31 @@ found_system_message
 ;	bsf	    eventInStatus, EVENT_RECEIVED   ; event fully received
         return
 check_system_common_message
-	return
+        return
 
 found_databyte1
-        movf        midiInByte, W		    ; save databyte
-        movwf	    eventInByte1		    ;
+        movf        midiInByte, W               ; save databyte
+        movwf       eventInByte1
         bsf         XPMIDI_EVENT, XPMIDI_BYTE1  ; and update status register
-	movf	    XPMIDI_EVENT, W		    ; test for expected bytes
-	andlw       b'00000011'
+        movf        XPMIDI_EVENT, W             ; test for expected bytes
+        andlw       b'00000011'
         sublw       b'00000010'
-        btfss       STATUS, Z			    ; waiting for databyte2
+        btfss       STATUS, Z                   ; waiting for databyte2
         return
-	bsf	    XPMIDI_EVENT, XPMIDI_EFULL   ; event fully received
-	return
+        bsf         XPMIDI_EVENT, XPMIDI_EFULL  ; event fully received
+        return
 
 found_databyte2
-        movf        midiInByte, W		    ; save databyte
-        movwf	    eventInByte2		    ;
+        movf        midiInByte, W               ; save databyte
+        movwf       eventInByte2
         bsf         XPMIDI_EVENT, XPMIDI_BYTE2  ; and update status register
-	movf	    XPMIDI_EVENT, W		    ; test for expected bytes
-	andlw       b'00000011'
+        movf        XPMIDI_EVENT, W             ; test for expected bytes
+        andlw       b'00000011'
         sublw       b'00000011'
-        btfss       STATUS, Z			    ; waiting for...?
+        btfss       STATUS, Z                   ; waiting for...?
         return
-	bsf	    XPMIDI_EVENT, XPMIDI_EFULL   ; event fully received
-	return
+        bsf         XPMIDI_EVENT, XPMIDI_EFULL  ; event fully received
+        return
 
 
 ;=============================================================================
@@ -397,6 +427,7 @@ mainloop
         pagesel     wait_until_receive_char
         call        wait_until_receive_char     ; read usart data
 
+        banksel     XPMIDI_STATUS
         movf        XPMIDI_STATUS, F            ; test for usart errors
         btfss       STATUS, Z
         call        error_handler
@@ -407,7 +438,12 @@ mainloop
 ;       btfsc       STATUS, Z                   ; skip system message family
 ;       goto        mainloop
 
+        pagesel     xpmidi_parse
+        call        xpmidi_parse
+
+        banksel     midiInByte
         movf        midiInByte, W               ; echo byte
+        pagesel     xpmidi_send_and_wait
         call        xpmidi_send_and_wait
 
         pagesel     $
